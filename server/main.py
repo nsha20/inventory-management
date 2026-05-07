@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
 from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders
+import uuid
+from datetime import date, timedelta
 
 app = FastAPI(title="Factory Inventory Management System")
 
@@ -119,6 +121,17 @@ class CreatePurchaseOrderRequest(BaseModel):
     unit_cost: float
     expected_delivery_date: str
     notes: Optional[str] = None
+
+class RestockingOrderItem(BaseModel):
+    sku: str
+    name: str
+    quantity: int
+    unit_price: float
+
+class RestockingOrderCreate(BaseModel):
+    items: List[RestockingOrderItem]
+    warehouse: Optional[str] = None
+    total_value: float
 
 # API endpoints
 @app.get("/")
@@ -303,6 +316,33 @@ def get_monthly_trends():
     result = list(months.values())
     result.sort(key=lambda x: x['month'])
     return result
+
+# In-memory store for restocking orders (cleared on server restart, consistent with app design)
+restocking_orders: List[dict] = []
+
+@app.post("/api/restocking-orders")
+def create_restocking_order(payload: RestockingOrderCreate):
+    """Submit a restocking order built from the budget recommendations."""
+    today = date.today()
+    order_number = f"RST-{today.year}-{len(restocking_orders) + 1:04d}"
+    order = {
+        "id": str(uuid.uuid4()),
+        "order_number": order_number,
+        "customer": "Internal Restock",
+        "items": [item.model_dump() for item in payload.items],
+        "status": "Restocking",
+        "warehouse": payload.warehouse or "All Warehouses",
+        "order_date": today.isoformat(),
+        "expected_delivery": (today + timedelta(days=7)).isoformat(),
+        "total_value": round(payload.total_value, 2),
+    }
+    restocking_orders.append(order)
+    return order
+
+@app.get("/api/restocking-orders")
+def get_restocking_orders():
+    """Return all submitted restocking orders."""
+    return restocking_orders
 
 if __name__ == "__main__":
     import uvicorn

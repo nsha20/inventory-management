@@ -8,6 +8,45 @@
     <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else>
+
+      <!-- Submitted Restocking Orders -->
+      <div v-if="restockingOrders.length > 0" class="card" style="margin-bottom: 24px;">
+        <div class="card-header">
+          <h2>Submitted Restocking Orders</h2>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Items</th>
+              <th>Warehouse</th>
+              <th>Order Date</th>
+              <th>Expected Delivery</th>
+              <th>Total Value</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="order in restockingOrders" :key="order.id">
+              <td>{{ order.order_number }}</td>
+              <td>
+                <details>
+                  <summary>{{ order.items.length }} item(s)</summary>
+                  <div v-for="item in order.items" :key="item.sku" style="padding: 2px 0; font-size: 12px;">
+                    {{ item.name }} × {{ item.quantity }}
+                  </div>
+                </details>
+              </td>
+              <td>{{ order.warehouse }}</td>
+              <td>{{ order.order_date }}</td>
+              <td>{{ order.expected_delivery }}</td>
+              <td>{{ formatCurrency(order.total_value) }}</td>
+              <td><span class="badge" style="background:#e0f2fe; color:#0369a1;">Restocking</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <div class="stats-grid">
         <div class="stat-card success">
           <div class="stat-label">{{ t('status.delivered') }}</div>
@@ -95,6 +134,7 @@ export default {
     const loading = ref(true)
     const error = ref(null)
     const orders = ref([])
+    const restockingOrders = ref([])
 
     // Use shared filters
     const {
@@ -105,11 +145,17 @@ export default {
       getCurrentFilters
     } = useFilters()
 
+    const formatCurrency = (value) =>
+      value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+
     const loadOrders = async () => {
       try {
         loading.value = true
         const filters = getCurrentFilters()
-        const fetchedOrders = await api.getOrders(filters)
+        const [fetchedOrders, fetchedRestocking] = await Promise.all([
+          api.getOrders(filters),
+          api.getRestockingOrders()
+        ])
 
         // Sort orders by order_date (earliest first)
         orders.value = fetchedOrders.sort((a, b) => {
@@ -117,6 +163,7 @@ export default {
           const dateB = new Date(b.order_date)
           return dateA - dateB
         })
+        restockingOrders.value = fetchedRestocking
       } catch (err) {
         error.value = 'Failed to load orders: ' + err.message
       } finally {
@@ -160,9 +207,11 @@ export default {
       loading,
       error,
       orders,
+      restockingOrders,
       getOrdersByStatus,
       getOrderStatusClass,
       formatDate,
+      formatCurrency,
       currencySymbol,
       translateProductName,
       translateCustomerName
